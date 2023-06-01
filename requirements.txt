@@ -1,0 +1,10 @@
+matplotlib
+seaborn
+numpy
+scikit_learn==1.1.2
+scipy==1.5.4
+ipython==8.6.0
+joblib
+scipy==1.5.4
+ternary==0.1
+torch==1.10.2
