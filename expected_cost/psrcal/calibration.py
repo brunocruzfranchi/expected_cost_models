@@ -1,7 +1,6 @@
 import torch
 from psrcal.optim.vecmodule import Parameter, LBFGS_Objective, lbfgs
 from psrcal import losses 
-from IPython import embed
 import numpy as np
 
 class AffineCal(LBFGS_Objective):
@@ -150,6 +149,5 @@ def calibrate(trnscores, trnlabels, tstscores, calclass, quiet=True, **kwargs):
             raise Exception("LBFGS was unable to converge")
             
         return obj.calibrate(tstscores), [obj.temp, obj.bias] if obj.has_bias else [obj.temp]
-
 
 

@@ -13,8 +13,9 @@ class Obj(LBFGS_Objective):
         X = self.X - self.target
         return (X.T @ X).trace()
 
-
-obj = Obj()
-paramvec, value, curve = lbfgs(obj,20)
-print("paramvec:",paramvec)
-print("\nX:",obj.X)
+if __name__ == "__main__":
+    obj = Obj()
+    paramvec, value, curve, success = lbfgs(obj, 20)
+    print("success:", success)
+    print("paramvec:", paramvec)
+    print("\nX:", obj.X)

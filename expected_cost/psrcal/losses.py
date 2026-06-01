@@ -1,10 +1,7 @@
 import numpy as np
-from IPython import embed
-from scipy.special import softmax
 import torch
 from psrcal.utils import onehot_encode, check_label
 import psrcal.calibration as psrcalcal
-import matplotlib.pyplot as plt
 
 def CostFunction(log_probs, labels, C=None, norm=True):
 
@@ -223,6 +220,7 @@ def ECEbin_v2(log_probs, target, M=15):
 
 
 def plot_reliability_diagram(ys, xs, counts, outfile=None, nbins=15, title=''):
+    import matplotlib.pyplot as plt
 
     plt.figure()
     plt.plot(xs, ys, "-*", label="prop_class2")
@@ -254,4 +252,3 @@ def shift(loss, off):
         return loss(torch.log(qs), label) @ So.reshape(-1, 1)
 
     return shifted_loss
-

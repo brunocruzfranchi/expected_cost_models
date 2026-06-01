@@ -1,26 +1,35 @@
 # Expected cost
-## How to create a proper environment for this project
-1. Create a conda environment with the latest python 3.8:
-```bash
-conda create -n <env_name> python=3.8
-```
-2. Activate the environment:
-```bash
-conda activate <env_name>
-```
-3. Install the requirements:
-```bash
-pip install -r requirements.txt
-```
-## Information
-This repository contains version from the original repository [luferrer/expected_cost](https://github.com/luferrer/expected_cost) and [luferrer/psr-calibration](https://github.com/SergioAlvarezB/psr-calibration) with some modifications to make it work with the version 3.8 of python and the latest version of the libraries used.
 
-To make use of this repository, you can create a notebook in the directory `notebooks` and import the modules from the directory `expected_cost` and `psrcal` as follows:
+## Environment
+
+This project is managed with [uv](https://docs.astral.sh/uv/) and targets Python 3.11+.
+
+Install the core runtime dependencies:
+
+```bash
+uv sync
+```
+
+Install optional extras as needed:
+
+```bash
+uv sync --extra dev
+uv sync --extra notebooks
+uv sync --extra calibration
+```
+
+Run tests:
+
+```bash
+uv run --extra dev pytest
+```
+
+## Information
+This repository contains version from the original repository [luferrer/expected_cost](https://github.com/luferrer/expected_cost) and [luferrer/psr-calibration](https://github.com/SergioAlvarezB/psr-calibration) with some modifications to make it work with Python 3.11 and current library versions.
+
+After installing the project, import the modules directly:
 
 ```python
-# This should be the first cell in the notebook
-import sys
-sys.path += ["../../", "../", "../../../"]
 from expected_cost import ec, utils
 from psrcal.calibration import *
 ```

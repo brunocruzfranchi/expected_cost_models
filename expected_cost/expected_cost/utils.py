@@ -1,10 +1,10 @@
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.special import expit, logit, logsumexp 
 
 
 def plot_hists(targets, scores, outfile):
+    import matplotlib.pyplot as plt
 
     num_targets = scores.shape[1]
     fig, axs = plt.subplots(num_targets, figsize=(4,2*num_targets))
