@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "expected-cost-models"
+version = "0.1.0"
+description = "Expected cost metrics and calibration utilities for classification models."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+license-files = ["expected_cost/LICENSE"]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+calibration = [
+    "scikit-learn>=1.4",
+    "torch>=2.2",
+]
+plot = [
+    "matplotlib>=3.7",
+]
+notebooks = [
+    "ipython>=8.20",
+    "matplotlib>=3.7",
+    "pandas>=2.1",
+    "seaborn>=0.13",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "expected_cost"}
+
+[tool.setuptools.packages.find]
+where = ["expected_cost"]
+include = ["expected_cost*", "psrcal*", "dataset*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

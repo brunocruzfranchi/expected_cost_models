@@ -6,7 +6,69 @@ Written by Luciana Ferrer.
 import numpy as np
 from expected_cost import utils
 from scipy.sparse import coo_matrix
-from sklearn.metrics._classification import  _check_targets, check_consistent_length
+
+
+def _check_label_vector(values, name):
+    labels = np.asarray(values)
+    if labels.ndim != 1:
+        raise ValueError(f"{name} must be a one-dimensional array")
+    if labels.size == 0:
+        raise ValueError(f"{name} must contain at least one element")
+
+    if np.issubdtype(labels.dtype, np.bool_):
+        labels = labels.astype(np.int64)
+    elif np.issubdtype(labels.dtype, np.integer):
+        labels = labels.astype(np.int64, copy=False)
+    elif (
+        np.issubdtype(labels.dtype, np.floating)
+        and np.all(np.isfinite(labels))
+        and np.all(labels == np.floor(labels))
+    ):
+        labels = labels.astype(np.int64)
+    else:
+        raise ValueError(f"{name} must contain non-negative integer labels")
+
+    if np.any(labels < 0):
+        raise ValueError(f"{name} must contain non-negative integer labels")
+
+    return labels
+
+
+def _check_priors(priors, num_targets):
+    priors = np.asarray(priors, dtype=float)
+    if priors.ndim != 1:
+        raise ValueError("priors must be a one-dimensional array")
+    if priors.shape[0] != num_targets:
+        raise ValueError(
+            f"priors length ({priors.shape[0]}) must match the number of "
+            f"target classes ({num_targets})"
+        )
+    return priors
+
+
+def _normalize_score_type(score_type):
+    if score_type == "log_likelihood_ratio":
+        return "log_likelihood_ratios"
+    return score_type
+
+
+def _num_classes_from_scores(scores, score_type):
+    score_type = _normalize_score_type(score_type)
+    scores = np.asarray(scores)
+
+    if score_type == "log_likelihood_ratios":
+        return 2
+    if scores.ndim != 2:
+        raise ValueError(
+            f"scores must be a two-dimensional array for score_type {score_type}"
+        )
+    if scores.shape[1] == 0:
+        raise ValueError("scores must include at least one class")
+    return scores.shape[1]
+
+
+def _default_costs_from_scores(scores, score_type):
+    return CostMatrix.zero_one_costs(_num_classes_from_scores(scores, score_type))
 
 
 
@@ -118,13 +180,19 @@ def average_cost(targets, decisions, costs=None, priors=None, sample_weight=None
     0.16666
     """
 
-    if priors is None:
-        priors = np.bincount(targets)/len(targets)
-    priors = priors[:,np.newaxis]
-
     if costs is None:
-        costs = CostMatrix.zero_one_costs(len(priors))
+        targets = _check_label_vector(targets, "targets")
+        decisions = _check_label_vector(decisions, "decisions")
+        num_classes = max(targets.max(), decisions.max()) + 1
+        costs = CostMatrix.zero_one_costs(num_classes)
     cmatrix = costs.get_matrix()
+
+    targets = _check_label_vector(targets, "targets")
+    decisions = _check_label_vector(decisions, "decisions")
+
+    if priors is None:
+        priors = np.bincount(targets, minlength=cmatrix.shape[0]) / len(targets)
+    priors = _check_priors(priors, cmatrix.shape[0])[:, np.newaxis]
 
     # The confusion matrix, when normalized by the true class (the target)
     # contains the R_ij we need for computing the cost.
@@ -165,10 +233,22 @@ def average_cost_from_confusion_matrix(R, priors, costs, adjusted=False):
         The average cost over the data.
     """    
 
+    R = np.asarray(R, dtype=float)
     cmatrix = costs.get_matrix()
+    if R.shape != cmatrix.shape:
+        raise ValueError(
+            f"confusion matrix shape {R.shape} must match cost matrix shape "
+            f"{cmatrix.shape}"
+        )
 
+    priors = np.asarray(priors, dtype=float)
     if priors.ndim==1:
-        priors = priors[:,np.newaxis]
+        priors = _check_priors(priors, cmatrix.shape[0])[:,np.newaxis]
+    elif priors.ndim != 2 or priors.shape != (cmatrix.shape[0], 1):
+        raise ValueError(
+            f"priors shape {priors.shape} must be ({cmatrix.shape[0]},) "
+            f"or ({cmatrix.shape[0]}, 1)"
+        )
 
     # Compute the average cost as the sum of all c_ij P_i R_ij
     ave_cost = np.sum(priors * cmatrix * R)
@@ -187,8 +267,15 @@ def get_posteriors_from_scores(scores, priors=None, score_type='log_posteriors')
     """ Convert scores into posteriors depending on their type. See method
     bayes_decisions for more details."""
 
+    score_type = _normalize_score_type(score_type)
+    scores = np.asarray(scores, dtype=float)
+
     if score_type in ['posteriors', 'log_posteriors']:
         # In this case, priors are ignored
+        if scores.ndim != 2:
+            raise ValueError(
+                f"scores must be a two-dimensional array for score_type {score_type}"
+            )
         posteriors = np.exp(scores) if score_type == "log_posteriors" else scores
 
     else:
@@ -202,6 +289,11 @@ def get_posteriors_from_scores(scores, priors=None, score_type='log_posteriors')
         priors = np.array(priors)/np.sum(priors)
 
         if score_type == "log_likelihoods":
+            if scores.ndim != 2:
+                raise ValueError(
+                    "scores must be a two-dimensional array for score_type "
+                    "log_likelihoods"
+                )
             posteriors = np.exp(utils.llks_to_logpost(scores, priors))
 
         elif score_type == "log_likelihood_ratios":
@@ -275,6 +367,9 @@ def average_cost_for_bayes_decisions(targets, scores, costs=None, priors=None, s
 
     """
 
+    if costs is None:
+        costs = _default_costs_from_scores(scores, score_type)
+
     decisions, posteriors = bayes_decisions(scores, costs, priors, score_type, silent=silent)
     cost = average_cost(targets, decisions, costs, priors, sample_weight, adjusted)
 
@@ -298,9 +393,13 @@ def average_cost_for_optimal_decisions(targets, scores, costs=None, priors=None,
     
     """
 
+    targets = _check_label_vector(targets, "targets")
+
     if np.max(targets)>1:
         raise ValueError("This method can only be used for binary classification.")
 
+    if costs is None:
+        costs = CostMatrix.zero_one_costs(2)
     cmatrix = costs.get_matrix()
 
     if np.any(np.array(cmatrix.shape) != 2) or cmatrix[0,0] != 0 or cmatrix[1,1] != 0:
@@ -315,6 +414,8 @@ def average_cost_for_optimal_decisions(targets, scores, costs=None, priors=None,
     N = len(targets)
     N1 = np.sum(targets==1)
     N0 = np.sum(targets==0)
+    if N0 == 0 or N1 == 0:
+        raise ValueError("Both binary classes must be present in targets.")
 
     # Create an array with posteriors for class 1 and targets
     post1_with_target = np.c_[posteriors[:,1], targets]
@@ -343,6 +444,7 @@ def average_cost_for_optimal_decisions(targets, scores, costs=None, priors=None,
 
     if priors is None:
         priors = np.bincount(targets)/len(targets)
+    priors = _check_priors(priors, 2)
 
     ave_cost = cmatrix[0,1] * priors[0] * R01 + cmatrix[1,0] * priors[1] * R10
 
@@ -364,8 +466,10 @@ class CostMatrix:
     """
 
     def __init__(self,costs):
-        self.costs = np.array(costs)
-        if np.any(costs)<0:
+        self.costs = np.asarray(costs, dtype=float)
+        if self.costs.ndim != 2:
+            raise ValueError("costs must be a two-dimensional matrix")
+        if np.any(self.costs)<0:
             print("Cost matrix contains negative elements. Consider running self.normalize "+
                 "to make sure all components are positive. This transformation does not change "+ 
                 "the optimal decisions or the ranking of systems evaluated with this cost and "+
@@ -379,7 +483,8 @@ class CostMatrix:
         the optimal decisions or the ranking of systems evaluated with this cost and 
         it ensures that the minimum value of the average_cost is 0.
         """
-        self.cost -= self.cost.min(axis=0)
+        self.costs -= self.costs.min(axis=1, keepdims=True)
+        return self
 
     def get_matrix(self):
         return self.costs
@@ -388,7 +493,7 @@ class CostMatrix:
     def from_utilities(utilities):
         """ Obtain a cost matrix from a utility matrix where better
         decisions are given higher values. """
-        return CostMatrix(-utilities).normalize()
+        return CostMatrix(-np.asarray(utilities, dtype=float)).normalize()
 
     @staticmethod
     def zero_one_costs(C, abstention_cost=None):
@@ -449,22 +554,38 @@ def generalized_confusion_matrix(targets, decisions, sample_weight=None, normali
 
     """
 
-    lab_type, targets, decisions = _check_targets(targets, decisions)
-    if lab_type not in ("binary", "multiclass"):
-        raise ValueError(f"{lab_type} is not supported")
+    targets = _check_label_vector(targets, "targets")
+    decisions = _check_label_vector(decisions, "decisions")
+
+    if targets.shape[0] != decisions.shape[0]:
+        raise ValueError(
+            "targets and decisions must contain the same number of samples"
+        )
 
     if sample_weight is None:
         sample_weight = np.ones(targets.shape[0], dtype=np.int64)
     else:
         sample_weight = np.asarray(sample_weight)
+        if sample_weight.ndim != 1:
+            raise ValueError("sample_weight must be a one-dimensional array")
+        if sample_weight.shape[0] != targets.shape[0]:
+            raise ValueError(
+                "sample_weight must contain the same number of samples as "
+                "targets and decisions"
+            )
 
     dtype = np.int64 if sample_weight.dtype.kind in {"i", "u", "b"} else np.float64
-    check_consistent_length(targets, decisions, sample_weight)
 
     if num_targets is None:
         num_targets = np.max(targets)+1
+    elif np.max(targets) >= num_targets:
+        raise ValueError("num_targets is too small for the provided targets")
     if num_decisions is None:
         num_decisions = np.max(decisions)+1
+    elif np.max(decisions) >= num_decisions:
+        raise ValueError("num_decisions is too small for the provided decisions")
+    if normalize not in (None, "true", "pred", "all"):
+        raise ValueError("normalize must be one of None, 'true', 'pred', or 'all'")
 
     cm = coo_matrix((sample_weight, (targets, decisions)), shape=(num_targets, num_decisions), dtype=dtype).toarray()
 
@@ -543,9 +664,14 @@ def bayes_decisions(scores, costs, priors=None, score_type='log_posteriors', sil
 
     """
 
+    score_type = _normalize_score_type(score_type)
+    scores = np.asarray(scores, dtype=float)
+
+    if costs is None:
+        costs = _default_costs_from_scores(scores, score_type)
     cmatrix = costs.get_matrix()
 
-    if score_type == "log_likelihood_ratio" and cmatrix.shape[0] != 2:
+    if score_type == "log_likelihood_ratios" and cmatrix.shape[0] != 2:
         raise ValueError("Score type log_likelihood_ratio can only be used for binary "+
             "classification tasks, but your cost matrix has more than two targets.") 
     
@@ -556,5 +682,10 @@ def bayes_decisions(scores, costs, priors=None, score_type='log_posteriors', sil
             "priors that are implicit in the posteriors provided.")
 
     posteriors = get_posteriors_from_scores(scores, priors, score_type)
+    if posteriors.shape[1] != cmatrix.shape[0]:
+        raise ValueError(
+            f"score class count ({posteriors.shape[1]}) must match cost matrix "
+            f"target count ({cmatrix.shape[0]})"
+        )
 
     return (posteriors @ cmatrix).argmin(axis=-1), posteriors
